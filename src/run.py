@@ -68,7 +68,7 @@ def main():
     # 设置环境（Python路径和.env文件）
     setup_environment(
         load_env_file_name=args.env_file,
-        check_env_var="GEMINI_API_KEY",
+        check_env_var="MONGODB_HOST",
         service_name=service_name,
     )
 
