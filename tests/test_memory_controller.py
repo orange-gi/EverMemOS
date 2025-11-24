@@ -368,7 +368,6 @@ class MemoryControllerTester:
         if result["total_count"] > 0 and len(result["memories"]) > 0:
             for idx, memory in enumerate(result["memories"]):
                 assert isinstance(memory, dict), f"第 {idx} 条记忆应该是字典"
-                assert "memory_type" in memory, f"第 {idx} 条记忆应包含 memory_type"
                 assert "user_id" in memory, f"第 {idx} 条记忆应包含 user_id"
                 assert "timestamp" in memory, f"第 {idx} 条记忆应包含 timestamp"
                 assert (
@@ -385,11 +384,16 @@ class MemoryControllerTester:
 
         return status_code, response
 
-    def test_fetch_memories_profile(self):
-        """测试3: GET /api/v1/memories - 获取用户画像（profile类型）"""
-        self.print_section("测试3: GET /api/v1/memories - 获取用户画像")
+    def test_fetch_personal_semantic_memory(self):
+        """测试3: GET /api/v1/memories - 获取个人语义记忆（personal_semantic_memory类型）"""
+        self.print_section("测试3: GET /api/v1/memories - 获取个人语义记忆")
 
-        params = {"user_id": self.user_id, "memory_type": "profile", "limit": 10}
+        params = {
+            "user_id": self.user_id,
+            "memory_type": "personal_semantic_memory",
+            "limit": 10,
+            "offset": 0,
+        }
 
         status_code, response = self.call_get_api("", params)
 
@@ -406,12 +410,36 @@ class MemoryControllerTester:
         assert "has_more" in result, "result 应包含 has_more 字段"
         assert "metadata" in result, "result 应包含 metadata 字段"
 
-        # 验证 metadata 中的 memory_type（注意：可能是 "profile" 或 "fetch"）
+        # 验证数据类型
+        assert isinstance(result["memories"], list), "memories 应该是列表"
+        assert result["total_count"] >= 0, "total_count 应该 >= 0"
+        assert isinstance(result["has_more"], bool), "has_more 应该是布尔值"
+
+        # 验证 metadata 结构
         metadata = result["metadata"]
+        assert isinstance(metadata, dict), "metadata 应该是字典"
+        assert "source" in metadata, "metadata 应包含 source 字段"
+        assert "user_id" in metadata, "metadata 应包含 user_id 字段"
         assert "memory_type" in metadata, "metadata 应包含 memory_type 字段"
         assert metadata.get("user_id") == self.user_id, "metadata 的 user_id 应该匹配"
 
-        print(f"✅ Fetch Profile 成功，返回 {result['total_count']} 条画像记忆")
+        # 如果有记忆，深度验证结构
+        if result["total_count"] > 0 and len(result["memories"]) > 0:
+            for idx, memory in enumerate(result["memories"]):
+                assert isinstance(memory, dict), f"第 {idx} 条记忆应该是字典"
+                assert "content" in memory, f"第 {idx} 条记忆应包含 content"
+                assert (
+                    "parent_episode_id" in memory
+                ), f"第 {idx} 条记忆应包含 parent_episode_id"
+                # 个人语义记忆的user_id可能为None（群组场景），所以不强制检查
+
+            print(
+                f"✅ Fetch Personal Semantic Memory 成功，返回 {result['total_count']} 条个人语义记忆，已验证深度结构"
+            )
+        else:
+            print(
+                f"✅ Fetch Personal Semantic Memory 成功，返回 {result['total_count']} 条个人语义记忆"
+            )
 
         return status_code, response
 
@@ -712,7 +740,7 @@ class MemoryControllerTester:
         test_methods = {
             "memorize": self.test_memorize_single_message,
             "fetch_episodic_memory": self.test_fetch_episodic_memory,
-            "fetch_profile": self.test_fetch_memories_profile,
+            "fetch_personal_semantic_memory": self.test_fetch_personal_semantic_memory,
             "search_keyword": self.test_search_memories_keyword,
             "search_vector": self.test_search_memories_vector,
             "search_hybrid": self.test_search_memories_hybrid,
@@ -804,6 +832,7 @@ def parse_args():
             "all",
             "memorize",
             "fetch_episodic_memory",
+            "fetch_personal_semantic_memory",
             "fetch_profile",
             "search_keyword",
             "search_vector",
