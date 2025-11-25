@@ -17,3 +17,5 @@
 /env.template @chandler.zhang
 
 /gitlab-ci.yml @jianhua.yao
+
+/tests/test_memory_controller.py @chandler.zhang
