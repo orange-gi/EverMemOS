@@ -529,6 +529,7 @@ async def save_memory_docs(
     episodic_docs = grouped_docs.get(MemoryType.EPISODIC_MEMORY, [])
     if episodic_docs:
         episodic_repo = get_bean_by_type(EpisodicMemoryRawRepository)
+        episodic_es_repo = get_bean_by_type(EpisodicMemoryEsRepository)
         episodic_milvus_repo = get_bean_by_type(EpisodicMemoryMilvusRepository)
         saved_episodic: List[Any] = []
 
@@ -669,7 +670,7 @@ async def load_core_memories(
         logger.info(f"[mem_memorize] 没有用户CoreMemory数据，old_memory_list为空")
 
 
-async def memorize(request: MemorizeRequest) -> List[Memory]:
+async def memorize(request: MemorizeRequest) -> Optional[str]:
     """
     记忆提取主流程 (全局队列版)
     
@@ -689,7 +690,7 @@ async def memorize(request: MemorizeRequest) -> List[Memory]:
     logger.info(f"[mem_memorize] 当前时间: {current_time}")
 
     memory_manager = MemoryManager()
-    
+    conversation_data_repo = get_bean_by_type(ConversationDataRepository)
     # ===== MemCell 提取阶段 =====
     if request.raw_data_type == RawDataType.CONVERSATION:
         request = await preprocess_conv_request(request, current_time)
@@ -701,7 +702,7 @@ async def memorize(request: MemorizeRequest) -> List[Memory]:
     now = time.time()
     logger.info("=" * 80)
     logger.info(f"[边界检测] 开始检测: group_id={request.group_id}")
-    logger.info(f"[边界检测] 历史消息: {len(request.history_raw_data_list)} 条")
+    logger.info(f"[边界检测] 暂存历史消息: {len(request.history_raw_data_list)} 条")
     logger.info(f"[边界检测] 新消息: {len(request.new_raw_data_list)} 条")
     logger.info("=" * 80)
 
@@ -742,7 +743,8 @@ async def memorize(request: MemorizeRequest) -> List[Memory]:
         )
         logger.warning(f"[mem_memorize] 未检测到边界，返回")
         return None
-
+    else:
+        logger.info(f"[mem_memorize] 成功提取MemCell")
         # 判断为边界，清空对话历史数据（重新开始累积）
         try:
             conversation_data_repo = get_bean_by_type(ConversationDataRepository)
@@ -770,23 +772,18 @@ async def memorize(request: MemorizeRequest) -> List[Memory]:
     memcell = await _save_memcell_to_database(memcell, current_time)
     logger.info(f"[mem_memorize] 成功保存 MemCell: {memcell.event_id}")
 
-    # 🔥 提交到全局 Worker 队列，异步处理
+    # 提交到 Worker 队列，异步处理
     from biz_layer.memorize_worker_service import MemorizeWorkerService
     
     try:
-        worker_service = await MemorizeWorkerService.get_instance()
-        await worker_service.submit_memcell(
-            memcell=memcell,
-            request=request,
-            current_time=current_time,
-        )
-        logger.info(f"[mem_memorize] ✅ MemCell 已提交到 Worker 队列，立即返回")
+        worker = get_bean_by_type(MemorizeWorkerService)
+        request_id = await worker.submit_memcell(memcell, request, current_time)
+        logger.info(f"[mem_memorize] ✅ MemCell 已提交到 Worker 队列, request_id={request_id}")
+        return request_id
     except Exception as e:
-        logger.error(f"[mem_memorize] ❌ 提交到 Worker 队列失败: {e}")
+        logger.error(f"[mem_memorize] ❌ 提交失败: {e}")
         traceback.print_exc()
-    
-    # 立即返回空列表（记忆将异步保存到数据库）
-    return []
+        return None
 
 
 def get_version_from_request(request: MemorizeOfflineRequest) -> str:
