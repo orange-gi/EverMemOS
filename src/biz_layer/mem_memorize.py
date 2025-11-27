@@ -1,13 +1,11 @@
-
-
 from dataclasses import dataclass
 import random
 import time
 import json
 import traceback
-from memory_layer.memory_manager import MemorizeRequest, MemorizeOfflineRequest
+from api_specs.dtos.memory_command import MemorizeRequest, MemorizeOfflineRequest
 from memory_layer.memory_manager import MemoryManager
-from memory_layer.types import (
+from api_specs.memory_types import (
     MemoryType,
     MemCell,
     Memory,
@@ -15,29 +13,16 @@ from memory_layer.types import (
     SemanticMemoryItem,
 )
 from memory_layer.memory_extractor.event_log_extractor import EventLog
-from memory_layer.memcell_extractor.base_memcell_extractor import RawData
-from infra_layer.adapters.out.persistence.document.memory.memcell import DataTypeEnum
-from memory_layer.memory_extractor.profile_memory_extractor import (
-    ProfileMemory,
-    ProfileMemoryExtractor,
-    ProfileMemoryExtractRequest,
-    ProfileMemoryMerger,
-    ProjectInfo,
-)
-from memory_layer.memory_extractor.group_profile_memory_extractor import (
-    GroupProfileMemoryExtractor,
-    GroupProfileMemoryExtractRequest,
-    GroupProfileMemory,
-)
+from memory_layer.memory_extractor.profile_memory_extractor import ProfileMemory
 from core.di import get_bean_by_type
 from component.redis_provider import RedisProvider
 from infra_layer.adapters.out.persistence.repository.episodic_memory_raw_repository import (
     EpisodicMemoryRawRepository,
 )
-from infra_layer.adapters.out.persistence.repository.semantic_memory_record_repository import (
+from infra_layer.adapters.out.persistence.repository.semantic_memory_record_raw_repository import (
     SemanticMemoryRecordRawRepository,
 )
-from infra_layer.adapters.out.persistence.repository.event_log_record_repository import (
+from infra_layer.adapters.out.persistence.repository.event_log_record_raw_repository import (
     EventLogRecordRawRepository,
 )
 from infra_layer.adapters.out.persistence.repository.conversation_status_raw_repository import (
@@ -59,7 +44,7 @@ from infra_layer.adapters.out.persistence.repository.group_profile_raw_repositor
     GroupProfileRawRepository,
 )
 from biz_layer.conversation_data_repo import ConversationDataRepository
-from memory_layer.types import RawDataType
+from api_specs.memory_types import RawDataType
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 import uuid
@@ -110,6 +95,7 @@ from infra_layer.adapters.out.search.repository.event_log_milvus_repository impo
 from biz_layer.mem_sync import MemorySyncService
 
 logger = get_logger(__name__)
+
 
 @dataclass
 class MemoryDocPayload:
@@ -163,6 +149,7 @@ def _clone_event_log(raw_event_log: Any) -> Optional[EventLog]:
         return EventLog.from_dict(raw_event_log)
 
     return None
+
 
 async def _trigger_clustering(
     group_id: str, memcell: MemCell, scene: Optional[str] = None
@@ -422,18 +409,6 @@ async def preprocess_conv_request(
             f"[preprocess] 从 conversation_data_repo 读取 {len(history_raw_data_list)} 条历史消息"
         )
 
-        # 第二步：保存新消息到 conversation_data_repo
-        save_success = await conversation_data_repo.save_conversation_data(
-            request.new_raw_data_list, request.group_id
-        )
-
-        if save_success:
-            logger.info(
-                f"[preprocess] 成功保存 {len(request.new_raw_data_list)} 条新消息"
-            )
-        else:
-            logger.warning(f"[preprocess] 保存新消息失败")
-
         # 更新 request
         request.history_raw_data_list = history_raw_data_list
         # new_raw_data_list 保持不变（就是新传入的消息）
@@ -576,7 +551,6 @@ async def save_memory_docs(
                     getattr(saved_doc, "event_id", None),
                 )
 
-    
         saved_result[MemoryType.EPISODIC_MEMORY] = saved_episodic
 
     # Semantic
@@ -606,9 +580,7 @@ async def save_memory_docs(
     # Profile
     profile_docs = grouped_docs.get(MemoryType.PROFILE, [])
     if profile_docs:
-        group_user_profile_repo = get_bean_by_type(
-            GroupUserProfileMemoryRawRepository
-        )
+        group_user_profile_repo = get_bean_by_type(GroupUserProfileMemoryRawRepository)
         saved_profiles = []
         for profile_mem in profile_docs:
             try:
@@ -761,25 +733,40 @@ async def memorize(request: MemorizeRequest) -> List[Memory]:
     logger.info("=" * 80)
 
     if memcell == None:
+        # 保存新消息到 conversation_data_repo
+        await conversation_data_repo.save_conversation_data(
+            request.new_raw_data_list, request.group_id
+        )
         await update_status_when_no_memcell(
             request, status_result, current_time, request.raw_data_type
         )
         logger.warning(f"[mem_memorize] 未检测到边界，返回")
         return None
 
-    # 清空对话历史（判断为边界）
-    logger.info(f"[mem_memorize] 成功提取 MemCell，清空对话历史")
-    try:
-        conversation_data_repo = get_bean_by_type(ConversationDataRepository)
-        delete_success = await conversation_data_repo.delete_conversation_data(request.group_id)
-        if delete_success:
-            logger.info(f"[mem_memorize] 已清空对话历史: group_id={request.group_id}")
-        else:
-            logger.warning(f"[mem_memorize] 清空对话历史失败: group_id={request.group_id}")
-    except Exception as e:
-        logger.error(f"[mem_memorize] 清空对话历史异常: {e}")
+        # 判断为边界，清空对话历史数据（重新开始累积）
+        try:
+            conversation_data_repo = get_bean_by_type(ConversationDataRepository)
+            delete_success = await conversation_data_repo.delete_conversation_data(
+                request.group_id
+            )
+            if delete_success:
+                logger.info(
+                    f"[mem_memorize] 判断为边界，已清空对话历史: group_id={request.group_id}"
+                )
+            else:
+                logger.warning(
+                    f"[mem_memorize] 清空对话历史失败: group_id={request.group_id}"
+                )
+            # 保存新消息到 conversation_data_repo
+            await conversation_data_repo.save_conversation_data(
+                request.new_raw_data_list, request.group_id
+            )
+        except Exception as e:
+            logger.error(f"[mem_memorize] 清空对话历史异常: {e}")
+            traceback.print_exc()
+    # TODO: 读状态表，读取累积的MemCell数据表，判断是否要做memorize计算
 
-    # 保存 MemCell 到数据库
+    # MemCell存表
     memcell = await _save_memcell_to_database(memcell, current_time)
     logger.info(f"[mem_memorize] 成功保存 MemCell: {memcell.event_id}")
 

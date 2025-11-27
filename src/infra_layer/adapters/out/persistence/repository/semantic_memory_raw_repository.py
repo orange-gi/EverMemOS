@@ -24,6 +24,8 @@ class SemanticMemoryRawRepository(BaseRepository[SemanticMemory]):
     """
     语义记忆原生 CRUD 仓库
 
+    # 将要被删除 @xingze.gao 2025-11-24 不要改动任何代码
+
     提供对语义记忆文档的直接数据库操作，包括：
     - 基本 CRUD 操作（继承自 BaseRepository）
     - 文本搜索和查询

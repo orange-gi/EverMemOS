@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime
-from typing import List, Optional, Dict, Any, Tuple
-import uuid
+from typing import Optional, Tuple, Union
 
 
 from core.di import get_bean_by_type, get_bean, service
+from infra_layer.adapters.out.persistence.document.memory.semantic_memory_record import (
+    SemanticMemoryRecord,
+    SemanticMemoryRecordProjection,
+)
 from infra_layer.adapters.out.persistence.repository.semantic_memory_raw_repository import (
     SemanticMemoryRawRepository,
 )
@@ -36,10 +38,20 @@ from infra_layer.adapters.out.persistence.repository.behavior_history_raw_reposi
 from infra_layer.adapters.out.persistence.repository.conversation_meta_raw_repository import (
     ConversationMetaRawRepository,
 )
+from infra_layer.adapters.out.persistence.repository.event_log_record_raw_repository import (
+    EventLogRecordRawRepository,
+)
+from infra_layer.adapters.out.persistence.document.memory.event_log_record import (
+    EventLogRecord,
+    EventLogRecordProjection,
+)
+from infra_layer.adapters.out.persistence.repository.semantic_memory_record_raw_repository import (
+    SemanticMemoryRecordRawRepository,
+)
 
-from .dtos.memory_query import FetchMemResponse, FetchMemRequest
+from api_specs.dtos.memory_query import FetchMemResponse
 
-from .memory_models import (
+from api_specs.memory_models import (
     MemoryType,
     MemoryModel,
     BaseMemoryModel,
@@ -51,10 +63,10 @@ from .memory_models import (
     RelationModel,
     BehaviorHistoryModel,
     CoreMemoryModel,
+    EventLogModel,
+    SemanticMemoryRecordModel,
     Metadata,
 )
-
-from .dtos.memory_query import FetchMemResponse, FetchMemResponse
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +173,8 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
         self._relationship_repo = None
         self._behavior_repo = None
         self._conversation_meta_repo = None
+        self._event_log_repo = None
+        self._semantic_memory_record_repo = None
         logger.info("FetchMemoryServiceImpl initialized")
 
     def _get_repositories(self):
@@ -180,6 +194,12 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
         if self._conversation_meta_repo is None:
             self._conversation_meta_repo = get_bean_by_type(
                 ConversationMetaRawRepository
+            )
+        if self._event_log_repo is None:
+            self._event_log_repo = get_bean_by_type(EventLogRecordRawRepository)
+        if self._semantic_memory_record_repo is None:
+            self._semantic_memory_record_repo = get_bean_by_type(
+                SemanticMemoryRecordRawRepository
             )
 
     async def _get_employee_metadata(
@@ -257,7 +277,9 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
     async def _convert_core_memory(self, core_memory) -> CoreMemoryModel:
         """转换核心记忆文档为模型"""
         metadata = await self._get_employee_metadata(
-            user_id=core_memory.user_id, source="core_memory", memory_type="multiple"
+            user_id=core_memory.user_id,
+            source="core_memory",
+            memory_type=MemoryType.MULTIPLE.value,
         )
 
         return CoreMemoryModel(
@@ -305,7 +327,7 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
         metadata = await self._get_employee_metadata(
             user_id=semantic_memory.user_id,
             source="user_input",
-            memory_type="semantic_memory",
+            memory_type=MemoryType.SEMANTIC_MEMORY.value,
         )
 
         return SemanticMemoryModel(
@@ -327,7 +349,7 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
         return EpisodicMemoryModel(
             id=str(episodic_memory.id),
             user_id=episodic_memory.user_id,
-            episode_id=episodic_memory.event_id,
+            episode_id=str(episodic_memory.event_id),
             title=episodic_memory.subject,
             summary=episodic_memory.summary,
             participants=episodic_memory.participants or [],
@@ -342,7 +364,7 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
             metadata=Metadata(
                 source="episodic_memory",
                 user_id=episodic_memory.user_id,
-                memory_type="episodic_memory",
+                memory_type=MemoryType.EPISODIC_MEMORY.value,
             ),
         )
 
@@ -359,7 +381,9 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
             created_at=entity.created_at,
             updated_at=entity.updated_at,
             metadata=Metadata(
-                source="entity", user_id=entity.user_id, memory_type="entity"
+                source="entity",
+                user_id=entity.user_id,
+                memory_type=MemoryType.ENTITY.value,
             ),
         )
 
@@ -386,7 +410,7 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
             metadata=Metadata(
                 source="relationship",
                 user_id=relationship.user_id,
-                memory_type="relation",
+                memory_type=MemoryType.RELATION.value,
             ),
         )
 
@@ -407,7 +431,76 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
             metadata=Metadata(
                 source="behavior_history",
                 user_id=behavior.user_id,
-                memory_type="behavior_history",
+                memory_type=MemoryType.BEHAVIOR_HISTORY.value,
+            ),
+        )
+
+    def _convert_event_log(
+        self, event_log: Union[EventLogRecord, EventLogRecordProjection]
+    ) -> EventLogModel:
+        """转换事件日志文档为模型
+
+        支持 EventLogRecord 和 EventLogRecordShort 类型。
+        EventLogRecordShort 不包含 vector 字段。
+        """
+        return EventLogModel(
+            id=str(event_log.id),
+            user_id=event_log.user_id,
+            atomic_fact=event_log.atomic_fact,
+            parent_episode_id=event_log.parent_episode_id,
+            timestamp=event_log.timestamp,
+            user_name=event_log.user_name,
+            group_id=event_log.group_id,
+            group_name=event_log.group_name,
+            participants=event_log.participants,
+            vector=getattr(
+                event_log, 'vector', None
+            ),  # EventLogRecordShort 没有 vector 字段
+            vector_model=event_log.vector_model,
+            event_type=event_log.event_type,
+            extend=event_log.extend,
+            created_at=event_log.created_at,
+            updated_at=event_log.updated_at,
+            metadata=Metadata(
+                source="event_log",
+                user_id=event_log.user_id,
+                memory_type=MemoryType.PERSONAL_EVENT_LOG.value,
+            ),
+        )
+
+    def _convert_semantic_memory_record(
+        self,
+        semantic_record: Union[SemanticMemoryRecord, SemanticMemoryRecordProjection],
+    ) -> SemanticMemoryRecordModel:
+        """转换语义记忆记录文档为模型
+
+        支持 SemanticMemoryRecord 和 SemanticMemoryRecordShort 类型。
+        SemanticMemoryRecordShort 不包含 vector 字段。
+        """
+        return SemanticMemoryRecordModel(
+            id=str(semantic_record.id),
+            content=semantic_record.content,
+            parent_episode_id=semantic_record.parent_episode_id,
+            user_id=semantic_record.user_id,
+            user_name=semantic_record.user_name,
+            group_id=semantic_record.group_id,
+            group_name=semantic_record.group_name,
+            start_time=semantic_record.start_time,
+            end_time=semantic_record.end_time,
+            duration_days=semantic_record.duration_days,
+            participants=semantic_record.participants,
+            vector=getattr(
+                semantic_record, 'vector', None
+            ),  # SemanticMemoryRecordShort 没有 vector 字段
+            vector_model=semantic_record.vector_model,
+            evidence=semantic_record.evidence,
+            extend=semantic_record.extend,
+            created_at=semantic_record.created_at,
+            updated_at=semantic_record.updated_at,
+            metadata=Metadata(
+                source="semantic_memory_record",
+                user_id=semantic_record.user_id or "",
+                memory_type=MemoryType.PERSONAL_SEMANTIC_MEMORY.value,
             ),
         )
 
@@ -583,6 +676,27 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
                         for behavior in behaviors
                     ]
 
+                case MemoryType.PERSONAL_EVENT_LOG:
+                    # 事件日志：原子事实列表
+                    event_logs = await self._event_log_repo.get_by_user_id(
+                        user_id, limit=limit, model=EventLogRecordProjection
+                    )
+                    memories = [
+                        self._convert_event_log(event_log) for event_log in event_logs
+                    ]
+
+                case MemoryType.PERSONAL_SEMANTIC_MEMORY:
+                    # 个人语义记忆：从情景记忆中提取的语义信息
+                    semantic_records = (
+                        await self._semantic_memory_record_repo.get_by_user_id(
+                            user_id, model=SemanticMemoryRecordProjection, limit=limit
+                        )
+                    )
+                    memories = [
+                        self._convert_semantic_memory_record(record)
+                        for record in semantic_records
+                    ]
+
             # 创建包含员工信息的metadata
             response_metadata = await self._get_employee_metadata(
                 user_id=user_id,
@@ -675,6 +789,22 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
                     )
                     if behaviors:
                         return self._convert_behavior_history(behaviors[0])
+
+                case MemoryType.PERSONAL_EVENT_LOG:
+                    # 事件日志通过ID查询（使用简化版本减少数据传输）
+                    event_log = await self._event_log_repo.get_by_id(
+                        memory_id, model=EventLogRecordProjection
+                    )
+                    if event_log:
+                        return self._convert_event_log(event_log)
+
+                case MemoryType.PERSONAL_SEMANTIC_MEMORY:
+                    # 个人语义记忆通过ID查询
+                    semantic_record = await self._semantic_memory_record_repo.get_by_id(
+                        memory_id
+                    )
+                    if semantic_record:
+                        return self._convert_semantic_memory_record(semantic_record)
 
             return None
 
@@ -774,93 +904,3 @@ def get_fetch_memory_service() -> FetchMemoryServiceInterface:
     通过依赖注入框架获取服务实例，支持单例模式。
     """
     return get_bean("fetch_memory_service")
-
-
-# 便捷函数
-async def find_memories_by_user_id(
-    user_id: str,
-    memory_type: MemoryType,
-    version_range: Optional[Tuple[Optional[str], Optional[str]]] = None,
-    limit: int = 10,
-) -> FetchMemResponse:
-    """
-    便捷函数：根据用户ID查找记忆
-
-    Args:
-        user_id: 用户ID
-        memory_type: 记忆类型
-        version_range: 版本范围 (start, end)，左闭右闭区间 [start, end]
-        limit: 返回数量限制
-
-    Returns:
-        记忆查询响应
-    """
-    service = get_fetch_memory_service()
-    return await service.find_by_user_id(user_id, memory_type, version_range, limit)
-
-
-async def find_memory_by_id(
-    memory_id: str, memory_type: MemoryType
-) -> Optional[MemoryModel]:
-    """
-    便捷函数：根据记忆ID查找单个记忆
-
-    Args:
-        memory_id: 记忆ID
-        memory_type: 记忆类型
-
-    Returns:
-        记忆模型，如果未找到则返回None
-    """
-    service = get_fetch_memory_service()
-    return await service.find_by_id(memory_id, memory_type)
-
-
-async def find_episodic_memory_by_event_id(
-    event_id: str, user_id: str
-) -> Optional[EpisodicMemoryModel]:
-    """
-    便捷函数：根据事件ID查找情景记忆
-
-    Args:
-        event_id: 事件ID
-        user_id: 用户ID
-
-    Returns:
-        情景记忆模型，如果未找到则返回None
-    """
-    service = get_fetch_memory_service()
-    return await service.find_episodic_by_event_id(event_id, user_id)
-
-
-async def find_entity_by_entity_id(entity_id: str) -> Optional[EntityModel]:
-    """
-    便捷函数：根据实体ID查找实体
-
-    Args:
-        entity_id: 实体ID
-
-    Returns:
-        实体模型，如果未找到则返回None
-    """
-    service = get_fetch_memory_service()
-    return await service.find_entity_by_entity_id(entity_id)
-
-
-async def find_relationship_by_entity_ids(
-    source_entity_id: str, target_entity_id: str
-) -> Optional[RelationModel]:
-    """
-    便捷函数：根据实体ID查找关系
-
-    Args:
-        source_entity_id: 源实体ID
-        target_entity_id: 目标实体ID
-
-    Returns:
-        关系模型，如果未找到则返回None
-    """
-    service = get_fetch_memory_service()
-    return await service.find_relationship_by_entity_ids(
-        source_entity_id, target_entity_id
-    )
