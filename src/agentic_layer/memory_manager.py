@@ -1337,6 +1337,8 @@ class MemoryManager:
                     # 所有数据源统一使用 COSINE，相似度即 score
                     similarity = score
                     embedding_results.append((result, similarity))
+                    if result.get('content'):
+                        result['semantic'] = result['content']
 
                 # 按相似度排序
                 embedding_results.sort(key=lambda x: x[1], reverse=True)
