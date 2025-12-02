@@ -387,13 +387,13 @@ class MemoryControllerTester:
 
         return status_code, response
 
-    def test_fetch_personal_semantic_memory(self):
-        """测试3: GET /api/v1/memories - 获取个人语义记忆（personal_semantic_memory类型）"""
-        self.print_section("测试3: GET /api/v1/memories - 获取个人语义记忆")
+    def test_fetch_personal_foresight(self):
+        """测试3: GET /api/v1/memories - 获取个人前瞻（personal_foresight类型）"""
+        self.print_section("测试3: GET /api/v1/memories - 获取个人前瞻")
 
         params = {
             "user_id": self.user_id,
-            "memory_type": "personal_semantic_memory",
+            "memory_type": "personal_foresight",
             "limit": 10,
             "offset": 0,
         }
@@ -806,7 +806,7 @@ class MemoryControllerTester:
         test_methods = {
             "memorize": self.test_memorize_single_message,
             "fetch_episodic": self.test_fetch_episodic,
-            "fetch_semantic": self.test_fetch_personal_semantic_memory,
+            "fetch_foresight": self.test_fetch_personal_foresight,
             "fetch_event_log": self.test_fetch_event_log,
             "search_keyword": self.test_search_memories_keyword,
             "search_vector": self.test_search_memories_vector,

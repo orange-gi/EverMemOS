@@ -323,7 +323,7 @@ def _convert_foresight_to_doc(
     if current_time is None:
         current_time = get_now_with_timezone()
 
-return ForesightRecord(
+    return ForesightRecord(
         user_id=getattr(foresight, "user_id", None),
         user_name=getattr(
             foresight, "user_name", getattr(parent_doc, "user_name", None)

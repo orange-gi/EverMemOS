@@ -16,7 +16,7 @@ from api_specs.memory_models import (
     RelationModel,
     BehaviorHistoryModel,
     EventLogModel,
-    SemanticMemoryRecordModel,
+    ForesightRecordModel,
 )
 
 
@@ -136,18 +136,18 @@ class TestFakeFetchMemoryService:
         assert all(memory.user_id == "user_001" for memory in response.memories)
 
     @pytest.mark.asyncio
-    async def test_find_by_user_id_personal_semantic_memory(self, service):
-        """测试查找个人语义记忆"""
+    async def test_find_by_user_id_personal_foresight(self, service):
+        """测试查找个人前瞻"""
         response = await service.find_by_user_id(
-            "user_001", MemoryType.PERSONAL_SEMANTIC_MEMORY, limit=5
+            "user_001", MemoryType.PERSONAL_FORESIGHT, limit=5
         )
 
         assert response.total_count > 0
         assert all(
-            isinstance(memory, SemanticMemoryRecordModel)
+            isinstance(memory, ForesightRecordModel)
             for memory in response.memories
         )
-        # 个人语义记忆的user_id可能为None（群组场景），所以不强制检查
+        # 个人前瞻的 user_id 可能为 None（群组场景），所以不强制检查
 
     @pytest.mark.asyncio
     async def test_find_by_user_id_nonexistent_user(self, service):
