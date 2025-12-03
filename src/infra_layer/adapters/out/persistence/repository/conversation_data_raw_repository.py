@@ -12,6 +12,7 @@ from memory_layer.memcell_extractor.base_memcell_extractor import RawData
 from biz_layer.mem_db_operations import _normalize_datetime_for_storage
 from common_utils.datetime_utils import get_now_with_timezone
 from core.di import get_bean
+from core.tenants.tenantize.kv.redis.tenant_key_utils import patch_redis_tenant_key
 
 logger = get_logger(__name__)
 
@@ -81,8 +82,9 @@ class ConversationDataRepositoryImpl(ConversationDataRepository):
         return self._cache_manager
 
     def _get_redis_key(self, group_id: str) -> str:
-        """生成Redis键名"""
-        return f"conversation_data:{group_id}"
+        """生成带租户前缀的Redis键名"""
+        raw_key = f"conversation_data:{group_id}"
+        return patch_redis_tenant_key(raw_key)
 
     async def save_conversation_data(
         self, raw_data_list: List[RawData], group_id: str
