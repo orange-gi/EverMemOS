@@ -387,7 +387,7 @@ class MemoryManager:
                 )
 
                 milvus_repo = get_bean_by_type(ForesightMilvusRepository)
-            elif MemoryType.PERSONAL_EVENT_LOG in retrieve_mem_request.memory_types:
+            elif MemoryType.EVENT_LOG in retrieve_mem_request.memory_types:
                 from infra_layer.adapters.out.search.repository.event_log_milvus_repository import (
                     EventLogMilvusRepository,
                 )
@@ -553,7 +553,7 @@ class MemoryManager:
                 )
 
                 milvus_repo = get_bean_by_type(ForesightMilvusRepository)
-            elif MemoryType.PERSONAL_EVENT_LOG in retrieve_mem_request.memory_types:
+            elif MemoryType.EVENT_LOG in retrieve_mem_request.memory_types:
                 from infra_layer.adapters.out.search.repository.event_log_milvus_repository import (
                     EventLogMilvusRepository,
                 )

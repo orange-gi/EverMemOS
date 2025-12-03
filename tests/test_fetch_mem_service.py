@@ -128,7 +128,7 @@ class TestFakeFetchMemoryService:
     async def test_find_by_user_id_personal_event_log(self, service):
         """测试查找个人事件日志"""
         response = await service.find_by_user_id(
-            "user_001", MemoryType.PERSONAL_EVENT_LOG, limit=5
+            "user_001", MemoryType.EVENT_LOG, limit=5
         )
 
         assert response.total_count > 0
@@ -139,7 +139,7 @@ class TestFakeFetchMemoryService:
     async def test_find_by_user_id_personal_foresight(self, service):
         """测试查找个人前瞻"""
         response = await service.find_by_user_id(
-            "user_001", MemoryType.PERSONAL_FORESIGHT, limit=5
+            "user_001", MemoryType.FORESIGHT, limit=5
         )
 
         assert response.total_count > 0

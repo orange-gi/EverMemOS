@@ -464,7 +464,7 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
             metadata=Metadata(
                 source="event_log",
                 user_id=event_log.user_id,
-                memory_type=MemoryType.PERSONAL_EVENT_LOG.value,
+                memory_type=MemoryType.EVENT_LOG.value,
             ),
         )
 
@@ -500,7 +500,7 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
             metadata=Metadata(
                 source="foresight_record",
                 user_id=foresight_record.user_id or "",
-                memory_type=MemoryType.PERSONAL_FORESIGHT.value,
+                memory_type=MemoryType.FORESIGHT.value,
             ),
         )
 
@@ -676,7 +676,7 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
                         for behavior in behaviors
                     ]
 
-                case MemoryType.PERSONAL_EVENT_LOG:
+                case MemoryType.EVENT_LOG:
                     # 事件日志：原子事实列表
                     event_logs = await self._event_log_repo.get_by_user_id(
                         user_id, limit=limit, model=EventLogRecordProjection
@@ -685,7 +685,7 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
                         self._convert_event_log(event_log) for event_log in event_logs
                     ]
 
-                case MemoryType.PERSONAL_FORESIGHT:
+                case MemoryType.FORESIGHT:
                     # 个人前瞻：从情景记忆中提取的前瞻信息
                     foresight_records = (
                         await self._foresight_record_repo.get_by_user_id(
@@ -790,7 +790,7 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
                     if behaviors:
                         return self._convert_behavior_history(behaviors[0])
 
-                case MemoryType.PERSONAL_EVENT_LOG:
+                case MemoryType.EVENT_LOG:
                     # 事件日志通过ID查询（使用简化版本减少数据传输）
                     event_log = await self._event_log_repo.get_by_id(
                         memory_id, model=EventLogRecordProjection
@@ -798,7 +798,7 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
                     if event_log:
                         return self._convert_event_log(event_log)
 
-                case MemoryType.PERSONAL_FORESIGHT:
+                case MemoryType.FORESIGHT:
                     # 个人前瞻通过ID查询
                     foresight_record = await self._foresight_record_repo.get_by_id(
                         memory_id

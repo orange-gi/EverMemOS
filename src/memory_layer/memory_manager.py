@@ -151,7 +151,7 @@ class MemoryManager:
             case MemoryType.FORESIGHT:
                 return await self._extract_foresight(episode_memory)
             
-            case MemoryType.PERSONAL_EVENT_LOG:
+            case MemoryType.EVENT_LOG:
                 return await self._extract_event_log(episode_memory)
             
             case MemoryType.PROFILE:

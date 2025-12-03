@@ -37,8 +37,7 @@ class MemoryType(str, Enum):
     RELATION = "relation"
     BEHAVIOR_HISTORY = "behavior_history"
 
-    PERSONAL_FORESIGHT = "personal_foresight"  # 个人前瞻
-    PERSONAL_EVENT_LOG = "personal_event_log"  # 事件日志（原子事实）
+    EVENT_LOG = "event_log"  # 事件日志（原子事实）
 
     GROUP_PROFILE = "group_profile"  # 群组画像
 
