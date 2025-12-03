@@ -58,29 +58,16 @@ class ElasticsearchLifespanProvider(LifespanProvider):
             # 过滤出有效的文档类
             document_classes = []
             for doc_class in all_doc_classes:
-                if hasattr(doc_class, '_index') and hasattr(doc_class._index, '_name'):
-                    index_name = doc_class._index._name
-                    # 检查索引名称是否有效
-                    if index_name and index_name.strip():
-                        document_classes.append(doc_class)
-                        logger.info(
-                            "发现文档类: %s -> %s", doc_class.__name__, index_name
-                        )
-                    else:
-                        logger.warning(
-                            "跳过文档类 %s，索引名称为空", doc_class.__name__
-                        )
-                else:
-                    logger.debug("跳过文档类 %s，缺少索引配置", doc_class.__name__)
+                index_name = doc_class.get_index_name()
+                # 检查索引名称是否有效
+                document_classes.append(doc_class)
+                logger.info("发现文档类: %s -> %s", doc_class.__name__, index_name)
 
             # 初始化索引
             if document_classes:
                 await self._es_client.initialize_indices(document_classes)
             else:
                 logger.info("没有发现需要初始化的文档类")
-
-            # 初始化 elasticsearch_dsl 连接
-            self._es_factory.get_default_connection()
 
             logger.info("✅ Elasticsearch 连接初始化完成")
 

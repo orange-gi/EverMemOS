@@ -6,6 +6,7 @@ Elasticsearch 客户端工厂
 
 import os
 import asyncio
+from common_utils.datetime_utils import get_now_with_timezone
 from typing import Dict, Optional, List, Type, Any
 from hashlib import md5
 from elasticsearch import AsyncElasticsearch
@@ -13,7 +14,7 @@ from elasticsearch.dsl.async_connections import connections as async_connections
 
 from core.di.decorators import component
 from core.observation.logger import get_logger
-from core.oxm.es.doc_base import DocBase
+from core.oxm.es.doc_base import DocBase, generate_index_name
 
 logger = get_logger(__name__)
 
@@ -74,15 +75,19 @@ def get_default_es_config() -> Dict[str, Any]:
 
 
 def get_cache_key(
-    hosts: List[str], username: Optional[str] = None, api_key: Optional[str] = None
+    hosts: List[str],
+    username: Optional[str] = None,
+    password: Optional[str] = None,
+    api_key: Optional[str] = None,
 ) -> str:
     """
-    生成缓存键
+    生成缓存键（同时作为 elasticsearch-dsl connections 的 alias）
     基于 hosts、认证信息生成唯一标识
 
     Args:
         hosts: Elasticsearch主机列表
         username: 用户名
+        password: 密码
         api_key: API密钥
 
     Returns:
@@ -91,8 +96,13 @@ def get_cache_key(
     hosts_str = ",".join(sorted(hosts))
     auth_str = ""
     if api_key:
+        # 使用 api_key 的前8位作为标识
         auth_str = f"api_key:{api_key[:8]}..."
+    elif username and password:
+        # 使用 username 和 password 的 md5 作为标识
+        auth_str = f"basic:{username}:{md5(password.encode()).hexdigest()[:8]}"
     elif username:
+        # 只有 username 时，仅使用 username
         auth_str = f"basic:{username}"
 
     key_content = f"{hosts_str}:{auth_str}"
@@ -136,11 +146,7 @@ class ElasticsearchClientWrapper:
                     logger.info(
                         "📋 初始化索引: class=%s -> index=%s",
                         doc_class.__name__,
-                        (
-                            doc_class._index._name
-                            if hasattr(doc_class, '_index')
-                            else 'unknown'
-                        ),
+                        doc_class.get_index_name(),
                     )
 
             except Exception as e:
@@ -151,30 +157,19 @@ class ElasticsearchClientWrapper:
         """初始化单个文档类的索引"""
         try:
             # 获取别名名称
-            if hasattr(doc_class, '_index') and hasattr(doc_class._index, '_name'):
-                alias = doc_class._index._name
-                # 检查别名是否为空
-                if not alias or alias.strip() == '':
-                    logger.warning("文档类 %s 的索引名称为空", doc_class.__name__)
-                    return
-            else:
-                logger.warning("文档类 %s 没有正确的索引配置", doc_class.__name__)
+            alias = doc_class.get_index_name()
+
+            if not alias:
+                logger.info("文档类没有索引别名，跳过初始化 %s", doc_class.__name__)
                 return
 
-            logger.info("正在检查索引别名: %s (文档类: %s)", alias, doc_class.__name__)
-
             # 检查别名是否存在
+            logger.info("正在检查索引别名: %s (文档类: %s)", alias, doc_class.__name__)
             alias_exists = await self.async_client.indices.exists(index=alias)
 
             if not alias_exists:
                 # 生成目标索引名
-                if hasattr(doc_class, 'dest'):
-                    dst = doc_class.dest()
-                else:
-                    from common_utils.datetime_utils import get_now_with_timezone
-
-                    now = get_now_with_timezone()
-                    dst = f"{alias}-{now.strftime('%Y%m%d%H%M%S%f')}"
+                dst = doc_class.dest()
 
                 # 创建索引
                 await doc_class.init(index=dst, using=self.async_client)
@@ -199,6 +194,9 @@ class ElasticsearchClientWrapper:
 
         except Exception as e:
             logger.error("❌ 初始化文档类 %s 的索引失败: %s", doc_class.__name__, e)
+            import traceback
+
+            traceback.print_exc()
             raise
 
     async def test_connection(self) -> bool:
@@ -226,7 +224,7 @@ class ElasticsearchClientWrapper:
         return self._initialized
 
 
-@component(name="elasticsearch_client_factory", primary=True)
+@component(name="elasticsearch_client_factory")
 class ElasticsearchClientFactory:
     """
     Elasticsearch 客户端工厂
@@ -242,7 +240,7 @@ class ElasticsearchClientFactory:
         self._default_config: Optional[Dict[str, Any]] = None
         logger.info("ElasticsearchClientFactory initialized")
 
-    async def create_client(
+    async def _create_client(
         self,
         hosts: List[str],
         username: Optional[str] = None,
@@ -282,68 +280,18 @@ class ElasticsearchClientFactory:
         elif username and password:
             conn_params["basic_auth"] = (username, password)
 
-        # 创建异步客户端
-        async_client = AsyncElasticsearch(**conn_params)
+        # 生成连接别名（用于 elasticsearch-dsl connections 管理）
+        alias = get_cache_key(hosts, username, password, api_key)
+
+        # 通过 async_connections.create_connection 创建异步客户端
+        async_client = async_connections.create_connection(alias=alias, **conn_params)
 
         client_wrapper = ElasticsearchClientWrapper(async_client, hosts)
 
-        logger.info("Created Elasticsearch client for %s", hosts)
+        logger.info("Created Elasticsearch client for %s with alias %s", hosts, alias)
         return client_wrapper
 
-    def create_async_connection(
-        self,
-        hosts: List[str],
-        username: Optional[str] = None,
-        password: Optional[str] = None,
-        api_key: Optional[str] = None,
-        timeout: int = 120,
-        alias: str = "default",
-        **kwargs,
-    ):
-        """
-        创建 elasticsearch_dsl 的 async connection
-
-        Args:
-            hosts: Elasticsearch主机列表
-            username: 用户名
-            password: 密码
-            api_key: API密钥
-            timeout: 超时时间（秒）
-            alias: 连接别名，默认为 "default"
-            **kwargs: 其他连接参数
-
-        Returns:
-            elasticsearch_dsl 的 async connection 对象
-        """
-        # 构建连接参数
-        conn_params = {
-            "hosts": hosts,
-            "timeout": timeout,
-            "max_retries": 3,
-            "retry_on_timeout": True,
-            "verify_certs": False,  # 禁用 SSL 证书验证
-            "ssl_show_warn": False,  # 禁用 SSL 警告
-            **kwargs,
-        }
-
-        # 添加认证信息
-        if api_key:
-            conn_params["api_key"] = api_key
-        elif username and password:
-            conn_params["basic_auth"] = (username, password)
-
-        # 创建 elasticsearch_dsl async 连接
-        async_connections.configure(default=conn_params)  # 必须先配置，再获取连接
-        async_es_connect = async_connections.get_connection(alias=alias)
-
-        logger.info(
-            "Created elasticsearch_dsl async connection for %s with alias '%s'",
-            hosts,
-            alias,
-        )
-        return async_es_connect
-
-    async def get_client(
+    async def _get_client(
         self,
         hosts: List[str],
         username: Optional[str] = None,
@@ -364,7 +312,7 @@ class ElasticsearchClientFactory:
         Returns:
             ElasticsearchClientWrapper 实例
         """
-        cache_key = get_cache_key(hosts, username, api_key)
+        cache_key = get_cache_key(hosts, username, password, api_key)
 
         async with self._lock:
             # 检查缓存
@@ -375,7 +323,7 @@ class ElasticsearchClientFactory:
             # 创建新的客户端实例
             logger.info("Creating new Elasticsearch client for %s", hosts)
 
-            client_wrapper = await self.create_client(
+            client_wrapper = await self._create_client(
                 hosts=hosts,
                 username=username,
                 password=password,
@@ -409,7 +357,7 @@ class ElasticsearchClientFactory:
             self._default_config = get_default_es_config()
 
         config = self._default_config
-        return await self.get_client(
+        default_client = await self._get_client(
             hosts=config["hosts"],
             username=config.get("username"),
             password=config.get("password"),
@@ -417,34 +365,17 @@ class ElasticsearchClientFactory:
             timeout=config.get("timeout", 120),
         )
 
-    def get_default_connection(self, alias: str = "default"):
-        """
-        获取基于环境变量配置的默认 elasticsearch_dsl async connection
-
-        Args:
-            alias: 连接别名，默认为 "default"
-
-        Returns:
-            elasticsearch_dsl 的 async connection 对象
-        """
-        # 获取或创建默认配置
-        if self._default_config is None:
-            self._default_config = get_default_es_config()
-
-        config = self._default_config
-        return self.create_async_connection(
-            hosts=config["hosts"],
-            username=config.get("username"),
-            password=config.get("password"),
-            api_key=config.get("api_key"),
-            timeout=config.get("timeout", 120),
-            alias=alias,
+        # 注册一个默认的客户端
+        async_connections.add_connection(
+            alias="default", conn=default_client.async_client
         )
+        return default_client
 
     async def remove_client(
         self,
         hosts: List[str],
         username: Optional[str] = None,
+        password: Optional[str] = None,
         api_key: Optional[str] = None,
     ) -> bool:
         """
@@ -453,12 +384,13 @@ class ElasticsearchClientFactory:
         Args:
             hosts: Elasticsearch主机列表
             username: 用户名
+            password: 密码
             api_key: API密钥
 
         Returns:
             bool: 是否成功移除
         """
-        cache_key = get_cache_key(hosts, username, api_key)
+        cache_key = get_cache_key(hosts, username, password, api_key)
 
         async with self._lock:
             if cache_key in self._clients:

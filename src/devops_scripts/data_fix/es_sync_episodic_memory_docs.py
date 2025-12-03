@@ -34,7 +34,7 @@ async def sync_episodic_memory_docs(
     from common_utils.datetime_utils import get_now_with_timezone
 
     mongo_repo = get_bean_by_type(EpisodicMemoryRawRepository)
-    index_name = EpisodicMemoryDoc._index._name  # type: ignore[attr-defined]
+    index_name = EpisodicMemoryDoc.get_index_name()
 
     query_filter = {}
     if days is not None:
