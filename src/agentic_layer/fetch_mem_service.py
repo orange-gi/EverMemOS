@@ -179,8 +179,6 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
 
     def _get_repositories(self):
         """获取 Repository 实例"""
-        if self._foresight_repo is None:
-            self._foresight_repo = get_bean_by_type(ForesightRawRepository)
         if self._episodic_repo is None:
             self._episodic_repo = get_bean_by_type(EpisodicMemoryRawRepository)
         if self._core_repo is None:
