@@ -20,8 +20,11 @@ from common_utils.datetime_utils import (
 )
 from ..llm.llm_provider import LLMProvider
 from api_specs.memory_types import RawDataType
-from ..prompts.zh.conv_prompts import CONV_BOUNDARY_DETECTION_PROMPT
 
+# 使用动态语言提示词导入（根据 MEMORY_LANGUAGE 环境变量自动选择）
+from ..prompts import CONV_BOUNDARY_DETECTION_PROMPT
+
+# 评估专用提示词
 from ..prompts.eval.conv_prompts import (
     CONV_BOUNDARY_DETECTION_PROMPT as EVAL_CONV_BOUNDARY_DETECTION_PROMPT,
 )
@@ -66,6 +69,10 @@ class ConvMemCellExtractor(MemCellExtractor):
     - Foresight 提取（由 ForesightExtractor 负责）
     - EventLog 提取（由 EventLogExtractor 负责）
     - Embedding 计算（由 MemoryManager 负责）
+    
+    语言支持：
+    - 通过 MEMORY_LANGUAGE 环境变量控制：'zh'(中文) 或 'en'(英文)，默认为 'en'
+    - 评估系统可通过 use_eval_prompts=True 使用专门的评估提示词
     """
     def __init__(
         self,
@@ -76,9 +83,12 @@ class ConvMemCellExtractor(MemCellExtractor):
         self.llm_provider = llm_provider
         self.use_eval_prompts = use_eval_prompts
         
+        # 根据参数选择提示词
         if use_eval_prompts:
+            # 评估模式：使用 eval/ 目录的提示词
             self.conv_boundary_detection_prompt = EVAL_CONV_BOUNDARY_DETECTION_PROMPT
         else:
+            # 生产模式：使用根据 MEMORY_LANGUAGE 环境变量自动选择的提示词
             self.conv_boundary_detection_prompt = CONV_BOUNDARY_DETECTION_PROMPT
 
     def shutdown(self) -> None:

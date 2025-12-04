@@ -155,7 +155,10 @@ class ForesightExtractor(MemoryExtractor):
         # 最多重试5次
         for retry in range(5):
             try:
-                logger.info(f"🎯 为EpisodeMemory生成前瞻联想: {episode.subject}，重试次数: {retry+1}/5")
+                if retry == 0:
+                    logger.info(f"🎯 为EpisodeMemory生成前瞻联想: {episode.subject}")
+                else:
+                    logger.info(f"🎯 为EpisodeMemory生成前瞻联想: {episode.subject}，重试次数: {retry+1}/5")
 
                 # 构建提示词
                 # 直接使用episode的user_id

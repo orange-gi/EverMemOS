@@ -226,14 +226,18 @@ class ChatSession:
         Returns:
             检索结果字典
         """
-        # 🔥 关键：与 test_v3_retrieve_http.py 完全对齐
+        # 🔥 关键：根据场景类型决定是否传递 user_id
+        # - 群组聊天场景：不传 user_id，检索群组级别的记忆（user_id 为空）
+        # - 助手场景：可以传 user_id 检索特定用户的记忆
         payload = {
             "query": query,
-            "user_id": "user_001",  # 与 test 保持一致
+            "group_id": self.group_id,  # 传递群组 ID 用于过滤
             "top_k": self.config.top_k_memories,
             "data_source": self.data_source,  # episode / event_log
             "retrieval_mode": self.retrieval_mode,  # rrf / embedding / bm25
         }
+        # 群组聊天场景不传 user_id，检索群组级别的共享记忆
+        # 助手场景可以传 user_id 检索个人记忆（暂时也不传，检索群组记忆）
         
         # 调试日志（仅在开发环境显示）
         # print(f"\n[DEBUG] Lightweight 检索请求:")
@@ -285,13 +289,16 @@ class ChatSession:
         Returns:
             检索结果字典
         """
-        # 🔥 关键：与 test_v3_retrieve_http.py 完全对齐
+        # 🔥 关键：根据场景类型决定是否传递 user_id
+        # - 群组聊天场景：不传 user_id，检索群组级别的记忆（user_id 为空）
+        # - 助手场景：可以传 user_id 检索特定用户的记忆
         payload = {
             "query": query,
-            "user_id": "user_001",  # 与 test 保持一致
+            "group_id": self.group_id,  # 传递群组 ID 用于过滤
             "top_k": self.config.top_k_memories,
             "time_range_days": self.config.time_range_days,  # 使用配置的时间范围
         }
+        # 群组聊天场景不传 user_id，检索群组级别的共享记忆
         
         # 调试日志（仅在开发环境显示）
         # print(f"\n[DEBUG] Agentic 检索请求:")
@@ -357,7 +364,20 @@ class ChatSession:
         if memories:
             memory_lines = []
             for i, mem in enumerate(memories, start=1):
-                timestamp = mem.get("timestamp", "")[:10]
+                raw_timestamp = mem.get("timestamp", "")
+                if hasattr(raw_timestamp, 'isoformat'):
+                    # datetime 对象
+                    timestamp = raw_timestamp.isoformat()[:10]
+                elif isinstance(raw_timestamp, (int, float)) and raw_timestamp > 0:
+                    # Unix 时间戳
+                    from datetime import datetime
+                    try:
+                        timestamp = datetime.fromtimestamp(raw_timestamp).isoformat()[:10]
+                    except (ValueError, OSError):
+                        timestamp = ""
+                else:
+                    # 字符串或其他
+                    timestamp = str(raw_timestamp)[:10] if raw_timestamp else ""
                 subject = mem.get("subject", "")
                 summary = mem.get("summary", "")
                 episode = mem.get("episode", "")
