@@ -316,7 +316,6 @@ async def memcell_extraction_from_conversation(
         
         memcell = MemCell(
             type=RawDataType.CONVERSATION,
-            event_id=str(uuid.uuid4()),
             user_id_list=list(speakers),
             original_data=history_raw_data_list,
             timestamp=last_timestamp,

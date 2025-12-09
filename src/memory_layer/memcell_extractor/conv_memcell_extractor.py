@@ -385,7 +385,6 @@ class ConvMemCellExtractor(MemCellExtractor):
 
             # Create basic MemCell (without episode, foresight, event_log, embedding)
             memcell = MemCell(
-                event_id=str(uuid.uuid4()),
                 user_id_list=request.user_id_list,
                 original_data=history_message_dict_list,
                 timestamp=timestamp,
