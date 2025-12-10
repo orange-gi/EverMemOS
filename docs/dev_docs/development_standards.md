@@ -9,7 +9,7 @@ This document introduces various standards and best practices in the project dev
 ### Quick Start for Newcomers (3 Steps)
 ```bash
 uv sync --group dev-full    # Sync dependencies
-pre-commit install          # Install code check hooks
+make setup-hooks            # Install code check hooks
 ```
 
 ### Core Conventions
@@ -1590,7 +1590,7 @@ Data migration and Schema changes are high-risk operations that may affect:
 ### Q1: Forgot to install pre-commit hook?
 
 ```bash
-pre-commit install
+make setup-hooks
 pre-commit run --all-files  # Run check on existing code
 ```
 

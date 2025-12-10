@@ -9,7 +9,7 @@
 ### 新人上手（3 步启动）
 ```bash
 uv sync --group dev-full    # 同步依赖
-pre-commit install           # 安装代码检查钩子
+make setup-hooks            # 安装代码检查钩子
 ```
 
 ### 核心约定
@@ -2496,7 +2496,7 @@ git push origin your-branch-name
 ### Q1: 忘记安装 pre-commit hook 怎么办？
 
 ```bash
-pre-commit install
+make setup-hooks
 pre-commit run --all-files  # 对现有代码运行检查
 ```
 
