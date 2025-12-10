@@ -371,7 +371,7 @@ class OrderService:
 
 ### 1. 环境变量配置
 
-创建`.env.development`文件：
+创建`.env`文件：
 
 ```bash
 # 开发环境配置
@@ -405,7 +405,7 @@ import os
 # ============= 开发环境初始化 (必须在最上面) =============
 # 1. 设置环境变量和Python路径
 from common_utils.load_env import setup_environment
-setup_environment(load_env_file_name=".env.development", check_env_var="MONGODB_HOST")
+setup_environment(load_env_file_name=".env", check_env_var="MONGODB_HOST")
 
 # 2. 启用Mock模式（开发环境默认启用）
 from core.di.utils import enable_mock_mode
@@ -451,7 +451,7 @@ import os
 
 # ============= 开发环境初始化 =============
 from common_utils.load_env import setup_environment
-setup_environment(load_env_file_name=".env.development")
+setup_environment(load_env_file_name=".env")
 
 from core.di.utils import enable_mock_mode
 if os.getenv("MOCK_MODE", "true").lower() == "true":
@@ -505,8 +505,8 @@ python test_service.py
 
 #### 启动开发服务
 ```bash
-# 使用开发环境启动Web服务
-python run.py --env-file .env.development
+# 启动Web服务（自动加载.env文件）
+python run.py
 
 # 或者设置环境变量后启动
 export MOCK_MODE=true
@@ -525,7 +525,7 @@ python run.py
     "env": {
         "PYTHONPATH": "${workspaceFolder}/src"
     },
-    "envFile": "${workspaceFolder}/.env.development",
+    "envFile": "${workspaceFolder}/.env",
     "cwd": "${workspaceFolder}/src",
     "python": "${workspaceFolder}/.venv/bin/python",
     "program": "dev_run.py",
