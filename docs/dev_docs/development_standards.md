@@ -6,10 +6,9 @@ This document introduces various standards and best practices in the project dev
 
 ## 🚀 TL;DR (Core Principles)
 
-### Quick Start for Newcomers (3 Steps)
+### Quick Start for Newcomers (2 Steps)
 ```bash
-uv sync --group dev-full    # Sync dependencies
-pre-commit install          # Install code check hooks
+make dev-setup              # One-click dev environment setup (sync deps + install hooks)
 ```
 
 ### Core Conventions
@@ -65,6 +64,9 @@ When modifying API interfaces, must synchronize updates to API documentation com
 **📄 Documentation Standards**  
 Use markdown format, place in docs directory. Small issues don't need documentation, just add comments in code
 
+**🌍 Internationalization Standards**  
+For international team communication and collaboration, code comments and documentation should be written in English
+
 ### 📖 Quick Navigation
 
 - Don't know how to install dependencies? → [Dependency Management Standards](#-dependency-management-standards)
@@ -101,6 +103,7 @@ Use markdown format, place in docs directory. Small issues don't need documentat
   - [Prefer Absolute Imports](#prefer-absolute-imports)
   - [__init__.py Usage Standards](#__init__py-usage-standards)
 - [Module Introduction File Naming](#-module-introduction-file-naming)
+- [Internationalization Standards](#-internationalization-standards)
 - [Branch Management Standards](#-branch-management-standards)
 - [MR Standards](#-mr-standards)
 - [Code Review Process](#-code-review-process)
@@ -287,12 +290,11 @@ The project uses `pre-commit` to unify code style. It's recommended to install p
 #### Installation Steps
 
 ```bash
-# 1. Ensure development dependencies are synced
-uv sync --dev
-
-# 2. Install pre-commit hook
-pre-commit install
+# One-click dev environment setup (sync deps + install hooks)
+make dev-setup
 ```
+
+> **Tip**: `make dev-setup` automatically runs `uv sync --dev` and installs pre-commit hooks. If you only need to install hooks separately, run `make setup-hooks`.
 
 #### Functions
 
@@ -1253,6 +1255,116 @@ A good module introduction file should include:
 
 ---
 
+## 🌍 Internationalization Standards
+
+### Core Principle
+
+**💡 Important Note: Use English for code comments and documentation**
+
+For international team communication and collaboration, all code comments and documentation should be written in English to ensure team members from different language backgrounds can understand and contribute to the project.
+
+### Language Requirements
+
+#### 1. Code Comments
+
+All code comments must be written in English:
+
+```python
+# ✅ Recommended: English comments
+def calculate_memory_score(memory: Memory, query: str) -> float:
+    """
+    Calculate relevance score between memory and query.
+    
+    Args:
+        memory: The memory object to evaluate
+        query: The search query string
+    
+    Returns:
+        A float score between 0 and 1 indicating relevance
+    """
+    # Calculate base similarity score using cosine similarity
+    base_score = cosine_similarity(memory.embedding, query_embedding)
+    
+    # Apply time decay factor: newer memories have higher weight
+    time_decay = calculate_time_decay(memory.created_at)
+    
+    return base_score * time_decay
+
+# ❌ Not recommended: Non-English comments
+def calculate_memory_score(memory: Memory, query: str) -> float:
+    """
+    计算记忆与查询的相关性得分。
+    """
+    # 计算基础相似度得分
+    base_score = cosine_similarity(memory.embedding, query_embedding)
+    ...
+```
+
+#### 2. Documentation
+
+All documentation files should be written in English:
+
+- Technical documentation
+- API documentation
+- Module introduction files (`introduction.md`)
+- Development guides
+- Architecture documentation
+
+**Note**: Chinese documentation can be maintained as supplementary reference (`*_zh.md`), but English should be the primary version.
+
+#### 3. Commit Messages
+
+Git commit messages should be written in English:
+
+```bash
+# ✅ Recommended: English commit messages
+git commit -m "feat: add user authentication endpoint"
+git commit -m "fix: resolve memory leak in cache manager"
+git commit -m "docs: update API documentation for search endpoint"
+
+# ❌ Not recommended: Non-English commit messages
+git commit -m "功能: 添加用户认证接口"
+```
+
+#### 4. Code Naming
+
+Variable names, function names, class names, and other identifiers should use English:
+
+```python
+# ✅ Recommended: English naming
+class MemoryManager:
+    def __init__(self):
+        self.cache_size = 1000
+        self.max_retries = 3
+    
+    async def fetch_user_memories(self, user_id: str) -> list[Memory]:
+        ...
+
+# ❌ Not recommended: Non-English or mixed naming
+class JiyiGuanliqi:  # Pinyin naming
+    def __init__(self):
+        self.huancun_daxiao = 1000  # Pinyin variable name
+```
+
+### Benefits
+
+- **Global Collaboration**: Enables team members worldwide to understand and contribute
+- **Industry Standard**: Aligns with international software development practices
+- **Tool Compatibility**: Better support from IDEs, linters, and documentation generators
+- **Knowledge Sharing**: Easier to share code and documentation with the open-source community
+
+### Checklist
+
+Before submitting code, confirm:
+
+- [ ] All code comments are written in English
+- [ ] Docstrings are written in English
+- [ ] Commit messages are written in English
+- [ ] Variable and function names use English
+- [ ] New documentation is written in English (with optional Chinese supplement)
+
+---
+
 ## 🌿 Branch Management Standards
 
 ### Branch Type Descriptions
@@ -1587,7 +1699,7 @@ Data migration and Schema changes are high-risk operations that may affect:
 ### Q1: Forgot to install pre-commit hook?
 
 ```bash
-pre-commit install
+make setup-hooks
 pre-commit run --all-files  # Run check on existing code
 ```
 

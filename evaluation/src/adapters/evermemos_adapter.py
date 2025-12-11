@@ -25,6 +25,7 @@ from evaluation.src.adapters.base import BaseAdapter
 from evaluation.src.adapters.registry import register_adapter
 from evaluation.src.core.data_models import Conversation, SearchResult
 from common_utils.datetime_utils import to_iso_format
+from memory_layer.prompts import get_prompt_by
 
 # Import EverMemOS implementation
 from evaluation.src.adapters.evermemos import (
@@ -74,10 +75,10 @@ class EverMemOSAdapter(BaseAdapter):
             max_tokens=llm_config.get("max_tokens", 32768),
         )
 
-        # Initialize Event Log Extractor (using evaluation-specific prompts)
+        # Initialize Event Log Extractor
         self.event_log_extractor = EventLogExtractor(
             llm_provider=self.llm_provider,
-            use_eval_prompts=True,  # Evaluation system uses eval/ prompts
+            event_log_prompt=get_prompt_by("EVENT_LOG_PROMPT", "en"),
         )
 
         # Ensure NLTK data is available
@@ -658,11 +659,13 @@ class EverMemOSAdapter(BaseAdapter):
         if "mode" in search_config:
             exp_config.retrieval_mode = search_config["mode"]
             exp_config.use_agentic_retrieval = exp_config.retrieval_mode == "agentic"
-        
+
         # Map lightweight_search_mode (controls search method in lightweight mode)
         # Options: "bm25_only" | "hybrid" | "emb_only"
         if "lightweight_search_mode" in search_config:
-            exp_config.lightweight_search_mode = search_config["lightweight_search_mode"]
+            exp_config.lightweight_search_mode = search_config[
+                "lightweight_search_mode"
+            ]
 
         return exp_config
 

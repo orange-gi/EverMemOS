@@ -11,25 +11,11 @@ from datetime import datetime
 import re, json, asyncio, uuid
 
 
-# Import dynamic language prompts (automatically select based on MEMORY_LANGUAGE environment variable)
-from ..prompts import (
-    EPISODE_GENERATION_PROMPT,
-    GROUP_EPISODE_GENERATION_PROMPT,
-    DEFAULT_CUSTOM_INSTRUCTIONS,
-)
+from memory_layer.prompts import get_prompt_by
+from memory_layer.llm.llm_provider import LLMProvider
 
-# Evaluation-specific prompts
-from ..prompts.eval.episode_mem_prompts import (
-    EPISODE_GENERATION_PROMPT as EVAL_EPISODE_GENERATION_PROMPT,
-    GROUP_EPISODE_GENERATION_PROMPT as EVAL_GROUP_EPISODE_GENERATION_PROMPT,
-    DEFAULT_CUSTOM_INSTRUCTIONS as EVAL_DEFAULT_CUSTOM_INSTRUCTIONS,
-)
-
-
-from ..llm.llm_provider import LLMProvider
-
-from .base_memory_extractor import MemoryExtractor, MemoryExtractRequest
-from api_specs.memory_types import MemoryType, Memory, RawDataType, MemCell
+from memory_layer.memory_extractor.base_memory_extractor import MemoryExtractor, MemoryExtractRequest
+from api_specs.memory_types import MemoryType, EpisodeMemory, RawDataType, MemCell
 
 from common_utils.datetime_utils import get_now_with_timezone
 from agentic_layer.vectorize_service import get_vectorize_service
@@ -60,20 +46,28 @@ class EpisodeMemoryExtractor(MemoryExtractor):
     """
 
     def __init__(
-        self, llm_provider: LLMProvider | None = None, use_eval_prompts: bool = False
+        self,
+        llm_provider: LLMProvider | None = None,
+        episode_prompt: Optional[str] = None,
+        group_episode_prompt: Optional[str] = None,
+        custom_instructions: Optional[str] = None,
     ):
+        """
+        Initialize Episode Extractor
+        
+        Args:
+            llm_provider: LLM provider
+            episode_prompt: Optional custom personal Episode prompt (uses default if not provided)
+            group_episode_prompt: Optional custom group Episode prompt (uses default if not provided)
+            custom_instructions: Optional custom instructions (uses default if not provided)
+        """
         super().__init__(MemoryType.EPISODIC_MEMORY)
         self.llm_provider = llm_provider
-        self.use_eval_prompts = use_eval_prompts
-
-        if self.use_eval_prompts:
-            self.episode_generation_prompt = EVAL_EPISODE_GENERATION_PROMPT
-            self.group_episode_generation_prompt = EVAL_GROUP_EPISODE_GENERATION_PROMPT
-            self.default_custom_instructions = EVAL_DEFAULT_CUSTOM_INSTRUCTIONS
-        else:
-            self.episode_generation_prompt = EPISODE_GENERATION_PROMPT
-            self.group_episode_generation_prompt = GROUP_EPISODE_GENERATION_PROMPT
-            self.default_custom_instructions = DEFAULT_CUSTOM_INSTRUCTIONS
+        
+        # Use custom prompts or get default via PromptManager
+        self.episode_generation_prompt = episode_prompt or get_prompt_by("EPISODE_GENERATION_PROMPT")
+        self.group_episode_generation_prompt = group_episode_prompt or get_prompt_by("GROUP_EPISODE_GENERATION_PROMPT")
+        self.default_custom_instructions = custom_instructions or get_prompt_by("DEFAULT_CUSTOM_INSTRUCTIONS")
 
     def _parse_timestamp(self, timestamp) -> datetime:
         """
@@ -196,7 +190,7 @@ class EpisodeMemoryExtractor(MemoryExtractor):
 
     async def _extract_episode(
         self, request: EpisodeMemoryExtractRequest, use_group_prompt: bool = False
-    ) -> Optional[Memory]:
+    ) -> Optional[EpisodeMemory]:
         """
         Extract Episode memory (internal method, single extraction)
 
@@ -207,7 +201,7 @@ class EpisodeMemoryExtractor(MemoryExtractor):
                 - False: Extract personal Episode (user_id from request.user_id)
 
         Returns:
-            Memory (contains episode field)
+            EpisodeMemory (contains episode field)
         """
         logger.debug(
             f"📚 Starting Episode extraction, use_group_prompt={use_group_prompt}"
@@ -318,8 +312,8 @@ class EpisodeMemoryExtractor(MemoryExtractor):
         # Compute Embedding
         embedding_data = await self._compute_embedding(content)
 
-        # Create Memory object (unified return type)
-        episode_memory = Memory(
+        # Create EpisodeMemory object
+        episode_memory = EpisodeMemory(
             memory_type=MemoryType.EPISODIC_MEMORY,
             user_id=user_id,
             user_name=user_name,
@@ -338,7 +332,7 @@ class EpisodeMemoryExtractor(MemoryExtractor):
         logger.debug(f"✅ Episode extraction completed: subject='{title}'")
         return episode_memory
 
-    async def extract_memory(self, request: MemoryExtractRequest) -> Optional[Memory]:
+    async def extract_memory(self, request: MemoryExtractRequest) -> Optional[EpisodeMemory]:
         """
         Extract Episode memory from MemCell (implement abstract method from base class)
 
@@ -354,7 +348,7 @@ class EpisodeMemoryExtractor(MemoryExtractor):
                 - Other optional fields
 
         Returns:
-            Memory: Episode memory object
+            EpisodeMemory: Episode memory object
                 - Group Episode: user_id=None, episode contains global view of entire conversation
                 - Personal Episode: user_id=<user_id>, episode contains personal view of the user
         """

@@ -6,15 +6,15 @@ from typing import Any, Dict, Iterable, List, Optional, Set
 
 from core.observation.logger import get_logger
 
-from api_specs.memory_types import Memory, MemoryType, RawDataType
-from .project_helpers import (
+from api_specs.memory_types import BaseMemory, MemoryType, RawDataType
+from memory_layer.memory_extractor.profile_memory.project_helpers import (
     convert_projects_to_dataclass,
     merge_projects_participated,
     project_to_dict,
 )
-from .skill_helpers import merge_skill_lists, normalize_skills_with_evidence
+from memory_layer.memory_extractor.profile_memory.skill_helpers import merge_skill_lists, normalize_skills_with_evidence
 from memory_layer.memory_extractor.profile_memory.types import ProfileMemory
-from .value_helpers import (
+from memory_layer.memory_extractor.profile_memory.value_helpers import (
     extract_values_with_evidence,
     merge_value_with_evidences_lists,
 )
@@ -45,9 +45,9 @@ def remove_evidences_from_profile(profile_obj: Dict[str, Any]) -> Dict[str, Any]
 
 
 def accumulate_old_memory_entry(
-    memory: Memory, participants_profile_list: List[Dict[str, Any]]
+    memory: BaseMemory, participants_profile_list: List[Dict[str, Any]]
 ) -> None:
-    """Convert legacy Memory objects into prompt-ready dictionaries."""
+    """Convert legacy BaseMemory objects into prompt-ready dictionaries."""
     try:
         if memory.memory_type != MemoryType.PROFILE:
             return

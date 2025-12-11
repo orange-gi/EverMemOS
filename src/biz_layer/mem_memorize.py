@@ -8,11 +8,12 @@ from memory_layer.memory_manager import MemoryManager
 from api_specs.memory_types import (
     MemoryType,
     MemCell,
-    Memory,
+    BaseMemory,
+    EpisodeMemory,
     RawDataType,
-    ForesightItem,
+    Foresight,
 )
-from memory_layer.memory_extractor.event_log_extractor import EventLog
+from api_specs.memory_types import EventLog
 from memory_layer.memory_extractor.profile_memory_extractor import ProfileMemory
 from core.di import get_bean_by_type
 from infra_layer.adapters.out.persistence.repository.episodic_memory_raw_repository import (
@@ -102,38 +103,6 @@ logger = get_logger(__name__)
 class MemoryDocPayload:
     memory_type: MemoryType
     doc: Any
-
-
-def _clone_foresight_item(raw_item: Any) -> Optional[ForesightItem]:
-    """Convert any structured foresight item into a ForesightItem instance"""
-    if raw_item is None:
-        return None
-
-    if isinstance(raw_item, ForesightItem):
-        return ForesightItem(
-            content=raw_item.content,
-            evidence=getattr(raw_item, "evidence", None),
-            start_time=getattr(raw_item, "start_time", None),
-            end_time=getattr(raw_item, "end_time", None),
-            duration_days=getattr(raw_item, "duration_days", None),
-            source_episode_id=getattr(raw_item, "source_episode_id", None),
-            vector=getattr(raw_item, "vector", None),
-            vector_model=getattr(raw_item, "vector_model", None),
-        )
-
-    if isinstance(raw_item, dict):
-        return ForesightItem(
-            content=raw_item.get("content", ""),
-            evidence=raw_item.get("evidence"),
-            start_time=raw_item.get("start_time"),
-            end_time=raw_item.get("end_time"),
-            duration_days=raw_item.get("duration_days"),
-            source_episode_id=raw_item.get("source_episode_id"),
-            vector=raw_item.get("vector"),
-            vector_model=raw_item.get("vector_model"),
-        )
-
-    return None
 
 
 def _clone_event_log(raw_event_log: Any) -> Optional[EventLog]:
@@ -477,9 +446,9 @@ class ExtractionState:
     scene: str
     is_assistant_scene: bool
     participants: List[str]
-    group_episode: Optional[Memory] = None
-    group_episode_memories: List[Memory] = None
-    episode_memories: List[Memory] = None
+    group_episode: Optional[EpisodeMemory] = None
+    group_episode_memories: List[EpisodeMemory] = None
+    episode_memories: List[EpisodeMemory] = None
     parent_docs_map: Dict[str, Any] = None
 
     def __post_init__(self):
@@ -493,11 +462,14 @@ async def process_memory_extraction(
     request: MemorizeRequest,
     memory_manager: MemoryManager,
     current_time: datetime,
-):
+) -> int:
     """
     Main memory extraction process
 
     Starting from MemCell, extract all memory types including Episode, Foresight, EventLog, etc.
+    
+    Returns:
+        int: Total number of memories extracted
     """
     # 1. Initialize state
     state = await _init_extraction_state(memcell, request, current_time)
@@ -509,8 +481,11 @@ async def process_memory_extraction(
     await _update_memcell_and_cluster(state)
 
     # 4. Save and extract subsequent memories
+    memories_count = 0
     if if_memorize(memcell):
-        await _process_memories(state, memory_manager)
+        memories_count = await _process_memories(state, memory_manager)
+    
+    return memories_count
 
 
 async def _init_extraction_state(
@@ -651,8 +626,12 @@ async def _update_memcell_and_cluster(state: ExtractionState):
         logger.error(f"[MemCell Processing] ❌ Failed to trigger clustering: {e}")
 
 
-async def _process_memories(state: ExtractionState, memory_manager: MemoryManager):
-    """Save Episodes and extract/save Foresight and EventLog"""
+async def _process_memories(state: ExtractionState, memory_manager: MemoryManager) -> int:
+    """Save Episodes and extract/save Foresight and EventLog
+    
+    Returns:
+        int: Total number of memories saved
+    """
     await load_core_memories(state.request, state.participants, state.current_time)
 
     episodic_source = state.group_episode_memories + state.episode_memories
@@ -662,21 +641,30 @@ async def _process_memories(state: ExtractionState, memory_manager: MemoryManage
     if state.is_assistant_scene and state.group_episode_memories:
         episodes_to_save.extend(_clone_episodes_for_users(state))
 
+    episodes_count = 0
+    foresight_count = 0
+    eventlog_count = 0
+
     if episodes_to_save:
         await _save_episodes(state, episodes_to_save, episodic_source)
+        episodes_count = len(episodes_to_save)
 
     if episodic_source:
         foresight_memories, event_logs = await _extract_foresight_and_eventlog(
             state, memory_manager, episodic_source
         )
         await _save_foresight_and_eventlog(state, foresight_memories, event_logs)
+        foresight_count = len(foresight_memories)
+        eventlog_count = len(event_logs)
 
     await update_status_after_memcell(
         state.request, state.memcell, state.current_time, state.request.raw_data_type
     )
+    
+    return episodes_count + foresight_count + eventlog_count
 
 
-def _clone_episodes_for_users(state: ExtractionState) -> List[Memory]:
+def _clone_episodes_for_users(state: ExtractionState) -> List[EpisodeMemory]:
     """Copy group Episode to each user"""
     from dataclasses import replace
 
@@ -692,8 +680,8 @@ def _clone_episodes_for_users(state: ExtractionState) -> List[Memory]:
 
 async def _save_episodes(
     state: ExtractionState,
-    episodes_to_save: List[Memory],
-    episodic_source: List[Memory],
+    episodes_to_save: List[EpisodeMemory],
+    episodic_source: List[EpisodeMemory],
 ):
     """Save Episodes to database"""
     for ep in episodes_to_save:
@@ -711,13 +699,15 @@ async def _save_episodes(
     saved_docs = saved_map.get(MemoryType.EPISODIC_MEMORY, [])
 
     for ep, saved_doc in zip(episodic_source, saved_docs):
-        ep.event_id = str(saved_doc.event_id)
-        state.parent_docs_map[str(saved_doc.event_id)] = saved_doc
+        ep.id = str(saved_doc.id)
+        state.parent_docs_map[str(saved_doc.id)] = saved_doc
 
 
 async def _extract_foresight_and_eventlog(
-    state: ExtractionState, memory_manager: MemoryManager, episodic_source: List[Memory]
-) -> Tuple[List[ForesightItem], List[EventLog]]:
+    state: ExtractionState,
+    memory_manager: MemoryManager,
+    episodic_source: List[EpisodeMemory],
+) -> Tuple[List[Foresight], List[EventLog]]:
     """Extract Foresight and EventLog"""
     logger.info(
         f"[MemCell Processing] Extracting Foresight/EventLog, total {len(episodic_source)} Episodes"
@@ -727,7 +717,7 @@ async def _extract_foresight_and_eventlog(
     metadata = []
 
     for ep in episodic_source:
-        if not ep.event_id:
+        if not ep.id:
             continue
         tasks.append(
             memory_manager.extract_memory(
@@ -763,14 +753,14 @@ async def _extract_foresight_and_eventlog(
         ep = meta['ep']
         if meta['type'] == MemoryType.FORESIGHT:
             for mem in result:
-                mem.parent_event_id = ep.event_id
+                mem.parent_episode_id = ep.id
                 mem.user_id = ep.user_id
                 mem.group_id = ep.group_id
                 mem.group_name = ep.group_name
                 mem.user_name = ep.user_name
                 foresight_memories.append(mem)
         elif meta['type'] == MemoryType.EVENT_LOG:
-            result.parent_event_id = ep.event_id
+            result.parent_episode_id = ep.id
             result.user_id = ep.user_id
             result.group_id = ep.group_id
             result.group_name = ep.group_name
@@ -782,13 +772,13 @@ async def _extract_foresight_and_eventlog(
 
 async def _save_foresight_and_eventlog(
     state: ExtractionState,
-    foresight_memories: List[ForesightItem],
+    foresight_memories: List[Foresight],
     event_logs: List[EventLog],
 ):
     """Save Foresight and EventLog"""
     foresight_docs = []
     for mem in foresight_memories:
-        parent_doc = state.parent_docs_map.get(str(mem.parent_event_id))
+        parent_doc = state.parent_docs_map.get(str(mem.parent_episode_id))
         if parent_doc:
             foresight_docs.append(
                 _convert_foresight_to_doc(mem, parent_doc, state.current_time)
@@ -796,7 +786,7 @@ async def _save_foresight_and_eventlog(
 
     event_log_docs = []
     for el in event_logs:
-        parent_doc = state.parent_docs_map.get(str(el.parent_event_id))
+        parent_doc = state.parent_docs_map.get(str(el.parent_episode_id))
         if parent_doc:
             event_log_docs.extend(
                 _convert_event_log_to_docs(el, parent_doc, state.current_time)
@@ -1178,7 +1168,7 @@ async def load_core_memories(
         logger.info(f"[mem_memorize] No user CoreMemory data, old_memory_list is empty")
 
 
-async def memorize(request: MemorizeRequest) -> Optional[str]:
+async def memorize(request: MemorizeRequest) -> int:
     """
     Main memory extraction process (global queue version)
 
@@ -1187,6 +1177,9 @@ async def memorize(request: MemorizeRequest) -> Optional[str]:
     2. Save MemCell to database
     3. Submit to global queue for asynchronous processing by Worker
     4. Return immediately, do not wait for subsequent processing to complete
+    
+    Returns:
+        int: Number of memories extracted (0 if no boundary detected or extraction failed)
     """
     logger.info(f"[mem_memorize] request.current_time: {request.current_time}")
 
@@ -1204,7 +1197,7 @@ async def memorize(request: MemorizeRequest) -> Optional[str]:
         request = await preprocess_conv_request(request, current_time)
         if request == None:
             logger.warning(f"[mem_memorize] preprocess_conv_request returned None")
-            return None
+            return 0
 
     # Boundary detection
     now = time.time()
@@ -1230,7 +1223,7 @@ async def memorize(request: MemorizeRequest) -> Optional[str]:
 
     if memcell_result == None:
         logger.warning(f"[mem_memorize] Skipped extracting MemCell")
-        return None
+        return 0
 
     memcell, status_result = memcell_result
 
@@ -1256,7 +1249,7 @@ async def memorize(request: MemorizeRequest) -> Optional[str]:
             request, status_result, current_time, request.raw_data_type
         )
         logger.warning(f"[mem_memorize] No boundary detected, returning")
-        return None
+        return 0
     else:
         logger.info(f"[mem_memorize] Successfully extracted MemCell")
         # Judged as boundary, clear conversation history data (restart accumulation)
@@ -1296,15 +1289,15 @@ async def memorize(request: MemorizeRequest) -> Optional[str]:
 
     # Directly execute memory extraction (blocking/asynchronous logic controlled by middleware layer request_process)
     try:
-        await process_memory_extraction(memcell, request, memory_manager, current_time)
+        memories_count = await process_memory_extraction(memcell, request, memory_manager, current_time)
         logger.info(
-            f"[mem_memorize] ✅ Memory extraction completed, request_id={request_id}"
+            f"[mem_memorize] ✅ Memory extraction completed, count={memories_count}, request_id={request_id}"
         )
-        return request_id
+        return memories_count
     except Exception as e:
         logger.error(f"[mem_memorize] ❌ Memory extraction failed: {e}")
         traceback.print_exc()
-        return None
+        return 0
 
 
 def get_version_from_request(request: MemorizeOfflineRequest) -> str:
