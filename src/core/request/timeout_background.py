@@ -24,7 +24,7 @@ from fastapi.responses import JSONResponse
 from core.observation.logger import get_logger
 from core.di.utils import get_bean_by_type
 from core.context.context import get_current_request
-from core.context.request.app_logic_provider import AppLogicProvider
+from core.request.app_logic_provider import AppLogicProvider
 
 logger = get_logger(__name__)
 
