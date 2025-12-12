@@ -69,7 +69,7 @@ def prompt_clear_data() -> bool:
 
 
 async def test_memorize_api():
-    """Test V3 API /memorize endpoint (single message storage)"""
+    """Test V1 API /memories endpoint (single message storage)"""
 
     # Ask user whether to clear existing data
     should_clear = prompt_clear_data()
@@ -80,7 +80,7 @@ async def test_memorize_api():
     memorize_url = f"{base_url}/api/v1/memories"
     
     print("=" * 100)
-    print("🧪 Testing V3 API HTTP Interface - Memory Storage")
+    print("🧪 Testing V1 API HTTP Interface - Memory Storage")
     print("=" * 100)
     
     # Load conversation data based on language setting
@@ -155,7 +155,7 @@ async def test_memorize_api():
                     
             except httpx.ConnectError:
                 print(f"   ✗ Connection failed: Unable to connect to {base_url}")
-                print(f"      Ensure V3 API service is running:")
+                print(f"      Ensure V1 API service is running:")
                 print(f"      uv run python src/bootstrap.py src/run.py")
                 return False
             except httpx.ReadTimeout:

@@ -124,7 +124,7 @@ class SimpleMemoryManager:
         )  # Use project's unified time utility (with timezone)
         message_id = f"msg_{self._message_counter}_{int(now.timestamp() * 1000)}"
 
-        # Build message data (completely consistent with test_v3_api_http.py format)
+        # Build message data (completely consistent with test_v1api_search.py format)
         message_data = {
             "message_id": message_id,
             "create_time": to_iso_format(
